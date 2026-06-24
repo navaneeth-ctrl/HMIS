@@ -1,0 +1,414 @@
+import React, { useState, useEffect } from 'react';
+import { useHMISData } from './hooks/useHMISData';
+import AdminLogin from './components/AdminLogin';
+import DashboardOverview from './components/DashboardOverview';
+import BedMonitoring from './components/BedMonitoring';
+import BedDetailModal from './components/BedDetailModal';
+import PatientRegistry from './components/PatientRegistry';
+import WardManagement from './components/WardManagement';
+import { 
+  Activity, 
+  LayoutDashboard, 
+  BedDouble, 
+  Users, 
+  LogOut, 
+  Clock, 
+  Bell, 
+  ShieldCheck,
+  AlertOctagon,
+  Sparkles,
+  Info,
+  CheckCircle,
+  X,
+  Hospital
+} from 'lucide-react';
+
+// Random mock data lists for the Emergency Admissions simulator
+const SIM_NAMES = [
+  'Tony Stark', 'Thor Odinson', 'Natasha Romanoff', 'Clint Barton', 
+  'Barry Allen', 'Hal Jordan', 'Clark Kent', 'Lois Lane', 'Selina Kyle',
+  'Luke Skywalker', 'Leia Organa', 'Han Solo', 'Anakin Skywalker'
+];
+const SIM_AILMENTS = [
+  'Acute Chest Pain', 'Severe Breathing Difficulty', 'Trauma - Motor Accident', 
+  'Suspected Stroke', 'Hypertensive Emergency', 'High Grade Fever with Rigors'
+];
+const SIM_DOCTORS = [
+  'Dr. Sarah Jenkins', 'Dr. Stephen Strange', 'Dr. Alfred Penny', 
+  'Dr. Otto Octavius', 'Dr. David Tennant', 'Dr. Helen Cho'
+];
+
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    return localStorage.getItem('hmis_logged_in') === 'true';
+  });
+  
+  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, beds, patients, wards
+  const [selectedBedKey, setSelectedBedKey] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const [timeString, setTimeString] = useState('');
+
+  // HMIS Data Hook
+  const hmis = useHMISData();
+  const statistics = hmis.getStatistics();
+
+  // Handle Real-Time Clock
+  useEffect(() => {
+    const updateTime = () => {
+      const options = { 
+        weekday: 'short', 
+        month: 'short', 
+        day: 'numeric', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit',
+        hour12: true 
+      };
+      setTimeString(new Date().toLocaleDateString('en-US', options));
+    };
+    updateTime();
+    const timer = setInterval(updateTime, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Sync login status
+  const handleLoginSuccess = () => {
+    setIsLoggedIn(true);
+    localStorage.setItem('hmis_logged_in', 'true');
+    addToast('Admin Login Successful', 'success');
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.setItem('hmis_logged_in', 'false');
+  };
+
+  // Toast System
+  const addToast = (message, type = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    
+    // Auto-remove toast after 4 seconds
+    setTimeout(() => {
+      removeToast(id);
+    }, 4000);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Intake / Discharge hooks wrapped with Toast feedback
+  const handleAdmit = (wardId, bedId, patientData) => {
+    hmis.admitPatient(wardId, bedId, patientData);
+    addToast(`Patient ${patientData.name} admitted successfully to Bed ${bedId}.`, 'success');
+  };
+
+  const handleDischarge = (wardId, bedId) => {
+    const key = `${wardId}-${bedId}`;
+    const name = hmis.beds[key]?.patient?.name || 'Patient';
+    hmis.dischargePatient(wardId, bedId);
+    addToast(`Patient ${name} discharged from Bed ${bedId}.`, 'info');
+  };
+
+  const handleUpdateVitals = (wardId, bedId, vitals) => {
+    hmis.updateVitals(wardId, bedId, vitals);
+    
+    // Check vital safety
+    const hr = parseInt(vitals.heartRate);
+    const spo2 = parseInt(vitals.spo2);
+    const temp = parseFloat(vitals.temperature);
+    let alertType = 'success';
+    let message = `Vitals updated for Bed ${bedId}.`;
+
+    if (hr < 50 || hr > 120 || spo2 < 90 || temp > 102) {
+      alertType = 'danger';
+      message = `CRITICAL ALERT: Bed ${bedId} vitals outside safe thresholds!`;
+    } else if (hr < 60 || hr > 100 || spo2 < 94 || temp > 99.5) {
+      alertType = 'warning';
+      message = `Warning: Bed ${bedId} vitals showing abnormal trends.`;
+    }
+
+    addToast(message, alertType);
+  };
+
+  const handleSetMaintenance = (wardId, bedId, isMaint) => {
+    hmis.setBedMaintenance(wardId, bedId, isMaint);
+    const msg = isMaint ? `Bed ${bedId} placed under maintenance.` : `Bed ${bedId} released and ready for occupancy.`;
+    addToast(msg, isMaint ? 'warning' : 'success');
+  };
+
+  // Patient Ward Transfer Coordinator
+  const handleTransferPatient = (fromWardId, fromBedId, toWardId, toBedId) => {
+    const fromKey = `${fromWardId}-${fromBedId}`;
+    const patientName = hmis.beds[fromKey]?.patient?.name || 'Patient';
+    
+    const success = hmis.transferPatient(fromWardId, fromBedId, toWardId, toBedId);
+    if (success) {
+      const fromShort = hmis.wards.find(w => w.id === fromWardId)?.shortName || fromWardId;
+      const toShort = hmis.wards.find(w => w.id === toWardId)?.shortName || toWardId;
+      addToast(`Patient ${patientName} successfully transferred to ${toShort} Bed ${toBedId}.`, 'success');
+    } else {
+      addToast('Transfer Failed: Selection bed is occupied or offline.', 'danger');
+    }
+  };
+
+  // Locator Callback from Directory
+  const handleLocatePatientBed = (wardId, bedId) => {
+    setCurrentView('beds');
+    setSelectedBedKey(`${wardId}-${bedId}`);
+  };
+
+  // Simulator: Emergency Admission
+  const handleSimulateAdmit = () => {
+    // Find a vacant bed
+    const vacantBeds = Object.values(hmis.beds).filter(b => b.status === 'vacant');
+    if (vacantBeds.length === 0) {
+      addToast('Simulation Error: All beds are currently occupied!', 'danger');
+      return;
+    }
+
+    // Select random bed
+    const targetBed = vacantBeds[Math.floor(Math.random() * vacantBeds.length)];
+    const randomName = SIM_NAMES[Math.floor(Math.random() * SIM_NAMES.length)];
+    const randomAilment = SIM_AILMENTS[Math.floor(Math.random() * SIM_AILMENTS.length)];
+    const randomDoctor = SIM_DOCTORS[Math.floor(Math.random() * SIM_DOCTORS.length)];
+    const randomAge = Math.floor(18 + Math.random() * 70);
+    const randomPriority = Math.random() > 0.6 ? 'high' : (Math.random() > 0.3 ? 'medium' : 'low');
+
+    handleAdmit(targetBed.wardId, targetBed.id, {
+      name: randomName,
+      age: randomAge,
+      gender: Math.random() > 0.5 ? 'Male' : 'Female',
+      ailment: randomAilment,
+      doctor: randomDoctor,
+      priority: randomPriority
+    });
+  };
+
+  // Simulator: Random Vitals Shift (warning / danger)
+  const handleSimulateVitalsShift = () => {
+    // Find occupied beds
+    const occupiedBeds = Object.values(hmis.beds).filter(b => b.status === 'occupied' && b.patient);
+    if (occupiedBeds.length === 0) {
+      addToast('Simulation Error: No active patients to shift vitals!', 'warning');
+      return;
+    }
+
+    // Select a random bed and apply bad vitals
+    const targetBed = occupiedBeds[Math.floor(Math.random() * occupiedBeds.length)];
+    const criticalType = Math.random() > 0.4 ? 'danger' : 'warning';
+    
+    let badVitals = {};
+    if (criticalType === 'danger') {
+      badVitals = {
+        heartRate: Math.random() > 0.5 ? 134 : 45,
+        bloodPressure: Math.random() > 0.5 ? '165/110' : '85/50',
+        spo2: Math.floor(82 + Math.random() * 7), // critical hypoxia
+        temperature: parseFloat((102.5 + Math.random() * 2).toFixed(1))
+      };
+    } else {
+      badVitals = {
+        heartRate: 104,
+        bloodPressure: '135/88',
+        spo2: 93,
+        temperature: 99.8
+      };
+    }
+
+    handleUpdateVitals(targetBed.wardId, targetBed.id, badVitals);
+  };
+
+  if (!isLoggedIn) {
+    return <AdminLogin onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  const selectedBed = selectedBedKey ? hmis.beds[selectedBedKey] : null;
+  const selectedBedWardName = selectedBed 
+    ? hmis.wards.find(w => w.id === selectedBed.wardId)?.name 
+    : '';
+
+  return (
+    <div className="hmis-container">
+      {/* Sidebar Layout */}
+      <aside className="sidebar">
+        <div className="sidebar-logo">
+          <div className="sidebar-logo-text">
+            <Activity size={24} style={{ color: 'var(--color-primary)' }} />
+            CareFlow HMIS
+          </div>
+        </div>
+
+        <nav className="sidebar-menu">
+          <button 
+            className={`sidebar-item ${currentView === 'dashboard' ? 'active' : ''}`}
+            onClick={() => setCurrentView('dashboard')}
+          >
+            <LayoutDashboard size={18} />
+            <span>Dashboard</span>
+          </button>
+
+          <button 
+            className={`sidebar-item ${currentView === 'wards' ? 'active' : ''}`}
+            onClick={() => setCurrentView('wards')}
+          >
+            <Hospital size={18} />
+            <span>Ward Management</span>
+          </button>
+          
+          <button 
+            className={`sidebar-item ${currentView === 'beds' ? 'active' : ''}`}
+            onClick={() => setCurrentView('beds')}
+          >
+            <BedDouble size={18} />
+            <span>Bed Monitoring</span>
+          </button>
+          
+          <button 
+            className={`sidebar-item ${currentView === 'patients' ? 'active' : ''}`}
+            onClick={() => setCurrentView('patients')}
+          >
+            <Users size={18} />
+            <span>Patient Registry</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div className="sidebar-user">
+            <div className="user-avatar">AD</div>
+            <div className="user-info">
+              <span className="user-name">Clinical Admin</span>
+              <span className="user-role" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <ShieldCheck size={12} style={{ color: 'var(--color-success)' }} />
+                Authorized
+              </span>
+            </div>
+          </div>
+          
+          <button onClick={handleLogout} className="btn-logout">
+            <LogOut size={14} />
+            <span>Sign Out</span>
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Page Viewport */}
+      <main className="main-viewport">
+        {/* Navigation Top Header */}
+        <header className="top-header">
+          <div className="header-title-area">
+            <h2 style={{ textTransform: 'capitalize' }}>
+              {currentView === 'dashboard' ? 'Overview Dashboard' : currentView === 'beds' ? 'Bed Allocation Map' : currentView === 'patients' ? 'Inpatient Directory' : 'Ward Coordinator'}
+            </h2>
+          </div>
+
+          <div className="header-actions">
+            <div className="realtime-clock" title="Hospital Standard Time">
+              <Clock size={14} style={{ display: 'inline', marginRight: '6px', verticalAlign: 'text-bottom' }} />
+              {timeString || 'Loading clock...'}
+            </div>
+
+            <button 
+              className="notification-bell-btn" 
+              title={`${statistics.highPriority} high-risk alerts`}
+              onClick={() => {
+                if (statistics.highPriority > 0) {
+                  setCurrentView('patients');
+                  addToast('Showing high priority patient alerts.', 'info');
+                } else {
+                  addToast('No active clinical alerts.', 'success');
+                }
+              }}
+            >
+              <Bell size={18} />
+              {statistics.highPriority > 0 && <span className="bell-badge" />}
+            </button>
+          </div>
+        </header>
+
+        {/* View Router */}
+        {currentView === 'dashboard' && (
+          <DashboardOverview 
+            stats={statistics} 
+            activities={hmis.activities}
+            onNavigate={setCurrentView}
+            onSimulateAdmit={handleSimulateAdmit}
+            onSimulateVitals={handleSimulateVitalsShift}
+          />
+        )}
+
+        {currentView === 'beds' && (
+          <BedMonitoring 
+            wards={hmis.wards} 
+            beds={hmis.beds} 
+            onSelectBed={(wardId, bedId) => setSelectedBedKey(`${wardId}-${bedId}`)}
+          />
+        )}
+
+        {currentView === 'patients' && (
+          <PatientRegistry 
+            beds={hmis.beds} 
+            wards={hmis.wards}
+            onLocatePatientBed={handleLocatePatientBed}
+            onDischargePatient={hmis.dischargePatient}
+          />
+        )}
+
+        {currentView === 'wards' && (
+          <WardManagement 
+            wards={hmis.wards}
+            beds={hmis.beds}
+            staff={hmis.staff}
+            onAssignStaff={hmis.assignStaffToWard}
+            onBulkStatusChange={hmis.bulkSetWardBedStatus}
+          />
+        )}
+
+        {/* Floating Bed Detail modal drawer */}
+        {selectedBedKey && (
+          <BedDetailModal 
+            bed={selectedBed}
+            wardName={selectedBedWardName}
+            onClose={() => setSelectedBedKey(null)}
+            onAdmit={handleAdmit}
+            onDischarge={handleDischarge}
+            onUpdateVitals={handleUpdateVitals}
+            onSetMaintenance={handleSetMaintenance}
+            onTransfer={handleTransferPatient}
+            beds={hmis.beds}
+            wards={hmis.wards}
+          />
+        )}
+
+        {/* Bottom Right Floating Toasts Container */}
+        <div className="toast-container">
+          {toasts.map(toast => {
+            let icon = <Info size={16} />;
+            let cssClass = '';
+            
+            if (toast.type === 'success') {
+              icon = <CheckCircle size={16} style={{ color: 'var(--color-success)' }} />;
+              cssClass = 'success';
+            } else if (toast.type === 'warning') {
+              icon = <AlertOctagon size={16} style={{ color: 'var(--color-warning)' }} />;
+              cssClass = 'warning';
+            } else if (toast.type === 'danger') {
+              icon = <AlertOctagon size={16} style={{ color: 'var(--color-danger)' }} />;
+              cssClass = 'danger';
+            }
+
+            return (
+              <div key={toast.id} className={`toast-message ${cssClass}`}>
+                {icon}
+                <div style={{ flex: 1, paddingRight: '10px' }}>{toast.message}</div>
+                <button className="toast-close-btn" onClick={() => removeToast(toast.id)}>
+                  <X size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </main>
+    </div>
+  );
+}
