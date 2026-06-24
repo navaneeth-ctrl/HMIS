@@ -6,6 +6,7 @@ import BedMonitoring from './components/BedMonitoring';
 import BedDetailModal from './components/BedDetailModal';
 import PatientRegistry from './components/PatientRegistry';
 import WardManagement from './components/WardManagement';
+import BillingSystem from './components/BillingSystem';
 import { 
   Activity, 
   LayoutDashboard, 
@@ -20,7 +21,8 @@ import {
   Info,
   CheckCircle,
   X,
-  Hospital
+  Hospital,
+  IndianRupee
 } from 'lucide-react';
 
 // Random mock data lists for the Emergency Admissions simulator
@@ -43,7 +45,7 @@ export default function App() {
     return localStorage.getItem('hmis_logged_in') === 'true';
   });
   
-  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, beds, patients, wards
+  const [currentView, setCurrentView] = useState('dashboard'); // dashboard, beds, patients, wards, billing
   const [selectedBedKey, setSelectedBedKey] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [timeString, setTimeString] = useState('');
@@ -108,7 +110,7 @@ export default function App() {
     const key = `${wardId}-${bedId}`;
     const name = hmis.beds[key]?.patient?.name || 'Patient';
     hmis.dischargePatient(wardId, bedId);
-    addToast(`Patient ${name} discharged from Bed ${bedId}.`, 'info');
+    addToast(`Patient ${name} discharged from Bed ${bedId}. Bill archived.`, 'info');
   };
 
   const handleUpdateVitals = (wardId, bedId, vitals) => {
@@ -271,6 +273,14 @@ export default function App() {
             <Users size={18} />
             <span>Patient Registry</span>
           </button>
+
+          <button 
+            className={`sidebar-item ${currentView === 'billing' ? 'active' : ''}`}
+            onClick={() => setCurrentView('billing')}
+          >
+            <IndianRupee size={18} />
+            <span>Billing Ledger</span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -298,7 +308,7 @@ export default function App() {
         <header className="top-header">
           <div className="header-title-area">
             <h2 style={{ textTransform: 'capitalize' }}>
-              {currentView === 'dashboard' ? 'Overview Dashboard' : currentView === 'beds' ? 'Bed Allocation Map' : currentView === 'patients' ? 'Inpatient Directory' : 'Ward Coordinator'}
+              {currentView === 'dashboard' ? 'Overview Dashboard' : currentView === 'beds' ? 'Bed Allocation Map' : currentView === 'patients' ? 'Inpatient Directory' : currentView === 'wards' ? 'Ward Coordinator' : 'Patient Billing Ledger'}
             </h2>
           </div>
 
@@ -361,6 +371,16 @@ export default function App() {
             staff={hmis.staff}
             onAssignStaff={hmis.assignStaffToWard}
             onBulkStatusChange={hmis.bulkSetWardBedStatus}
+          />
+        )}
+
+        {currentView === 'billing' && (
+          <BillingSystem
+            beds={hmis.beds}
+            dischargedPatients={hmis.dischargedPatients}
+            wards={hmis.wards}
+            onAddCharge={hmis.addBillingCharge}
+            onRecordPayment={hmis.recordPatientPayment}
           />
         )}
 

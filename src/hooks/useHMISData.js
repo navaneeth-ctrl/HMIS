@@ -24,10 +24,18 @@ const DEFAULT_STAFF = {
   er: { doctor: 'Dr. Peggy Carter', nurse: 'Nurse Clara' }
 };
 
+const WARD_RATES = {
+  icu: 1500,
+  er: 1000,
+  gen_a: 500,
+  gen_b: 500,
+  peds: 600
+};
+
 const ROW_LABELS = ['A', 'B', 'C', 'D', 'E']; // 5 rows
 const COL_COUNT = 6; // 6 columns = 30 beds per ward
 
-// Helper to generate seed patient data
+// Helper to generate seed patient data with billing details (Rupees, under 10k)
 const getSeedPatients = () => ({
   'icu-B3': {
     id: 'P-5021',
@@ -38,7 +46,17 @@ const getSeedPatients = () => ({
     doctor: 'Dr. David Tennant',
     priority: 'high',
     admittedAt: new Date(Date.now() - 600000).toISOString(), // 10m ago
-    vitals: { heartRate: 94, bloodPressure: '115/78', spo2: 91, temperature: 98.4, status: 'warning' }
+    vitals: { heartRate: 94, bloodPressure: '115/78', spo2: 91, temperature: 98.4, status: 'warning' },
+    billing: {
+      baseRate: 1500,
+      amountPaid: 2000,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-oxy', desc: 'Oxygen Inhalation Therapy', category: 'Treatment', cost: 450, qty: 1 },
+        { id: 'chg-neb', desc: 'Nebulization Treatment', category: 'Treatment', cost: 250, qty: 1 },
+        { id: 'chg-med1', desc: 'Salbutamol Inhaler & Spacer', category: 'Pharmacy', cost: 350, qty: 1 }
+      ]
+    }
   },
   'icu-A1': {
     id: 'P-5022',
@@ -49,7 +67,17 @@ const getSeedPatients = () => ({
     doctor: 'Dr. Sarah Jenkins',
     priority: 'high',
     admittedAt: new Date(Date.now() - 3600000 * 4).toISOString(), // 4h ago
-    vitals: { heartRate: 112, bloodPressure: '142/95', spo2: 93, temperature: 99.1, status: 'danger' }
+    vitals: { heartRate: 112, bloodPressure: '142/95', spo2: 93, temperature: 99.1, status: 'danger' },
+    billing: {
+      baseRate: 1500,
+      amountPaid: 3500,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-ecg', desc: 'Electrocardiogram (ECG)', category: 'Diagnostics', stroke: 'Test', cost: 450, qty: 1 },
+        { id: 'chg-echo', desc: 'Transthoracic Echocardiogram', category: 'Diagnostics', cost: 1200, qty: 1 },
+        { id: 'chg-med1', desc: 'Diuretics & Vasodilators IV', category: 'Pharmacy', cost: 650, qty: 1 }
+      ]
+    }
   },
   'gen_a-A2': {
     id: 'P-3011',
@@ -60,7 +88,17 @@ const getSeedPatients = () => ({
     doctor: 'Dr. Alfred Penny',
     priority: 'medium',
     admittedAt: new Date(Date.now() - 3600000 * 24).toISOString(), // 24h ago
-    vitals: { heartRate: 68, bloodPressure: '118/75', spo2: 99, temperature: 98.2, status: 'normal' }
+    vitals: { heartRate: 68, bloodPressure: '118/75', spo2: 99, temperature: 98.2, status: 'normal' },
+    billing: {
+      baseRate: 500,
+      amountPaid: 1500,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-xray', desc: 'Chest X-Ray (PA View)', category: 'Diagnostics', cost: 600, qty: 1 },
+        { id: 'chg-wrap', desc: 'Rib Splinting & Compression Bandage', category: 'Procedure', cost: 400, qty: 1 },
+        { id: 'chg-med1', desc: 'Analgesics & NSAIDs (Oral)', category: 'Pharmacy', cost: 250, qty: 1 }
+      ]
+    }
   },
   'gen_a-D1': {
     id: 'P-3012',
@@ -71,7 +109,17 @@ const getSeedPatients = () => ({
     doctor: 'Dr. Otto Octavius',
     priority: 'low',
     admittedAt: new Date(Date.now() - 3600000 * 3).toISOString(), // 3h ago
-    vitals: { heartRate: 75, bloodPressure: '120/80', spo2: 98, temperature: 98.8, status: 'normal' }
+    vitals: { heartRate: 75, bloodPressure: '120/80', spo2: 98, temperature: 98.8, status: 'normal' },
+    billing: {
+      baseRate: 500,
+      amountPaid: 1000,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-cbc', desc: 'Complete Blood Count (CBC)', category: 'Diagnostics', cost: 250, qty: 1 },
+        { id: 'chg-iv', desc: 'IV Normal Saline Infusion (2L)', category: 'Treatment', cost: 400, qty: 1 },
+        { id: 'chg-med1', desc: 'Multivitamin Infusions', category: 'Pharmacy', cost: 180, qty: 1 }
+      ]
+    }
   },
   'gen_b-B2': {
     id: 'P-4015',
@@ -82,7 +130,17 @@ const getSeedPatients = () => ({
     doctor: 'Dr. Stephen Strange',
     priority: 'medium',
     admittedAt: new Date(Date.now() - 3600000 * 8).toISOString(), // 8h ago
-    vitals: { heartRate: 82, bloodPressure: '125/82', spo2: 97, temperature: 98.6, status: 'normal' }
+    vitals: { heartRate: 82, bloodPressure: '125/82', spo2: 97, temperature: 98.6, status: 'normal' },
+    billing: {
+      baseRate: 500,
+      amountPaid: 2000,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-dress', desc: 'Surgical Wound Dressing & Care', category: 'Procedure', cost: 450, qty: 1 },
+        { id: 'chg-med1', desc: 'Broad-Spectrum Antibiotics (Oral)', category: 'Pharmacy', cost: 350, qty: 1 },
+        { id: 'chg-med2', desc: 'Post-op Pain Management Plan', category: 'Pharmacy', cost: 200, qty: 1 }
+      ]
+    }
   },
   'peds-C3': {
     id: 'P-8004',
@@ -93,7 +151,16 @@ const getSeedPatients = () => ({
     doctor: 'Dr. Helen Cho',
     priority: 'low',
     admittedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-    vitals: { heartRate: 88, bloodPressure: '110/70', spo2: 96, temperature: 99.5, status: 'normal' }
+    vitals: { heartRate: 88, bloodPressure: '110/70', spo2: 96, temperature: 99.5, status: 'normal' },
+    billing: {
+      baseRate: 600,
+      amountPaid: 1000,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Pediatric Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-neb', desc: 'Pediatric Nebulization Session', category: 'Treatment', cost: 250, qty: 1 },
+        { id: 'chg-med1', desc: 'Cough Suppressants & Syrups', category: 'Pharmacy', cost: 220, qty: 1 }
+      ]
+    }
   },
   'er-A4': {
     id: 'P-1090',
@@ -104,7 +171,16 @@ const getSeedPatients = () => ({
     doctor: 'Dr. Peggy Carter',
     priority: 'high',
     admittedAt: new Date(Date.now() - 1800000).toISOString(), // 30m ago
-    vitals: { heartRate: 58, bloodPressure: '135/85', spo2: 95, temperature: 97.9, status: 'warning' }
+    vitals: { heartRate: 58, bloodPressure: '135/85', spo2: 95, temperature: 97.9, status: 'warning' },
+    billing: {
+      baseRate: 1000,
+      amountPaid: 1500,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-ct', desc: 'Brain CT Scan (Non-Contrast)', category: 'Diagnostics', cost: 1500, qty: 1 },
+        { id: 'chg-med1', desc: 'Osmotic Diuretics IV', category: 'Pharmacy', cost: 380, qty: 1 }
+      ]
+    }
   }
 });
 
@@ -148,6 +224,56 @@ const createInitialState = () => {
   return bedState;
 };
 
+// Seed historical discharged patient database (Rupees, under 10k)
+const getSeedDischargedPatients = () => [
+  {
+    id: 'P-1002',
+    name: 'Diana Prince',
+    age: 30,
+    gender: 'Female',
+    ailment: 'Severe Migraine Cluster',
+    doctor: 'Dr. Peggy Carter',
+    priority: 'low',
+    admittedAt: new Date(Date.now() - 3600000 * 48).toISOString(),
+    dischargedAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+    status: 'discharged',
+    wardId: 'er',
+    bedId: 'E2',
+    billing: {
+      baseRate: 1000,
+      amountPaid: 3000,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-iv', desc: 'Analgesic IV Infusions', category: 'Pharmacy', cost: 350, qty: 1 },
+        { id: 'chg-cbc', desc: 'Complete Blood Count', category: 'Diagnostics', cost: 250, qty: 1 }
+      ]
+    }
+  },
+  {
+    id: 'P-1009',
+    name: 'Bucky Barnes',
+    age: 94,
+    gender: 'Male',
+    ailment: 'Minor Cuts & Lacerations',
+    doctor: 'Dr. Sarah Jenkins',
+    priority: 'medium',
+    admittedAt: new Date(Date.now() - 3600000 * 12).toISOString(),
+    dischargedAt: new Date(Date.now() - 3600000 * 4).toISOString(),
+    status: 'discharged',
+    wardId: 'icu',
+    bedId: 'D4',
+    billing: {
+      baseRate: 1500,
+      amountPaid: 2550,
+      charges: [
+        { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
+        { id: 'chg-sut', desc: 'Wound Suturing & Local Anesthetic', category: 'Procedure', cost: 800, qty: 1 },
+        { id: 'chg-ant', desc: 'Tetanus Shot & Antibiotics Pack', category: 'Pharmacy', cost: 220, qty: 1 }
+      ]
+    }
+  }
+];
+
 export const useHMISData = () => {
   const [beds, setBeds] = useState(() => {
     const saved = localStorage.getItem('hmis_beds');
@@ -164,6 +290,11 @@ export const useHMISData = () => {
     return saved ? JSON.parse(saved) : DEFAULT_STAFF;
   });
 
+  const [dischargedPatients, setDischargedPatients] = useState(() => {
+    const saved = localStorage.getItem('hmis_discharged');
+    return saved ? JSON.parse(saved) : getSeedDischargedPatients();
+  });
+
   useEffect(() => {
     localStorage.setItem('hmis_beds', JSON.stringify(beds));
   }, [beds]);
@@ -175,6 +306,10 @@ export const useHMISData = () => {
   useEffect(() => {
     localStorage.setItem('hmis_staff', JSON.stringify(staff));
   }, [staff]);
+
+  useEffect(() => {
+    localStorage.setItem('hmis_discharged', JSON.stringify(dischargedPatients));
+  }, [dischargedPatients]);
 
   const addActivity = (text, type = 'info') => {
     const newActivity = {
@@ -198,6 +333,13 @@ export const useHMISData = () => {
         spo2: Math.floor(95 + Math.random() * 5),
         temperature: parseFloat((97.8 + Math.random() * 1.5).toFixed(1)),
         status: 'normal'
+      },
+      billing: {
+        baseRate: WARD_RATES[wardId] || 500,
+        amountPaid: 0,
+        charges: [
+          { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 }
+        ]
       }
     };
 
@@ -216,8 +358,30 @@ export const useHMISData = () => {
 
   const dischargePatient = (wardId, bedId) => {
     const key = `${wardId}-${bedId}`;
-    const patientName = beds[key]?.patient?.name || 'Patient';
-    
+    const bed = beds[key];
+    if (!bed || !bed.patient) return;
+
+    const patient = bed.patient;
+
+    // Calculate final billing stay days
+    const durationMs = Date.now() - new Date(patient.admittedAt).getTime();
+    const days = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
+
+    const finalizedPatient = {
+      ...patient,
+      dischargedAt: new Date().toISOString(),
+      status: 'discharged',
+      wardId,
+      bedId,
+      billing: {
+        ...patient.billing,
+        daysAdmitted: days
+      }
+    };
+
+    // Move to discharged database
+    setDischargedPatients(prev => [finalizedPatient, ...prev]);
+
     setBeds(prev => ({
       ...prev,
       [key]: {
@@ -228,7 +392,7 @@ export const useHMISData = () => {
     }));
 
     const wardName = WARDS.find(w => w.id === wardId)?.shortName || wardId;
-    addActivity(`Patient ${patientName} discharged from ${wardName} Bed ${bedId}`, 'discharge');
+    addActivity(`Patient ${patient.name} discharged from ${wardName} Bed ${bedId}. Bill archived.`, 'discharge');
   };
 
   const updateVitals = (wardId, bedId, updatedVitals) => {
@@ -300,6 +464,11 @@ export const useHMISData = () => {
         status: 'occupied',
         patient: {
           ...patient,
+          // Update base rate for new ward bed
+          billing: {
+            ...patient.billing,
+            baseRate: WARD_RATES[toWardId] || patient.billing.baseRate
+          },
           // Update assigned physician if transferring to a ward with different staff
           doctor: staff[toWardId]?.doctor || patient.doctor
         }
@@ -358,6 +527,106 @@ export const useHMISData = () => {
 
       return nextBeds;
     });
+  };
+
+  // Add a billing charge item to an active inpatient or archived outpatient
+  const addBillingCharge = (patientId, chargeItem) => {
+    let foundActive = false;
+    
+    // 1. Search active beds
+    setBeds(prev => {
+      const nextBeds = { ...prev };
+      Object.keys(nextBeds).forEach(key => {
+        const bed = nextBeds[key];
+        if (bed.status === 'occupied' && bed.patient && bed.patient.id === patientId) {
+          nextBeds[key] = {
+            ...bed,
+            patient: {
+              ...bed.patient,
+              billing: {
+                ...bed.patient.billing,
+                charges: [
+                  ...bed.patient.billing.charges,
+                  { id: `chg-${Date.now()}`, ...chargeItem }
+                ]
+              }
+            }
+          };
+          foundActive = true;
+        }
+      });
+      return nextBeds;
+    });
+
+    // 2. Search discharged archives if not active
+    if (!foundActive) {
+      setDischargedPatients(prev => {
+        return prev.map(p => {
+          if (p.id === patientId) {
+            return {
+              ...p,
+              billing: {
+                ...p.billing,
+                charges: [
+                  ...p.billing.charges,
+                  { id: `chg-${Date.now()}`, ...chargeItem }
+                ]
+              }
+            };
+          }
+          return p;
+        });
+      });
+    }
+
+    addActivity(`Charge item "${chargeItem.desc}" (₹${chargeItem.cost}) appended to Patient ${patientId}`, 'update');
+  };
+
+  // Record payment transactions for a patient bill
+  const recordPatientPayment = (patientId, amount) => {
+    let foundActive = false;
+
+    // 1. Check active beds
+    setBeds(prev => {
+      const nextBeds = { ...prev };
+      Object.keys(nextBeds).forEach(key => {
+        const bed = nextBeds[key];
+        if (bed.status === 'occupied' && bed.patient && bed.patient.id === patientId) {
+          nextBeds[key] = {
+            ...bed,
+            patient: {
+              ...bed.patient,
+              billing: {
+                ...bed.patient.billing,
+                amountPaid: bed.patient.billing.amountPaid + amount
+              }
+            }
+          };
+          foundActive = true;
+        }
+      });
+      return nextBeds;
+    });
+
+    // 2. Check discharged archives
+    if (!foundActive) {
+      setDischargedPatients(prev => {
+        return prev.map(p => {
+          if (p.id === patientId) {
+            return {
+              ...p,
+              billing: {
+                ...p.billing,
+                amountPaid: p.billing.amountPaid + amount
+              }
+            };
+          }
+          return p;
+        });
+      });
+    }
+
+    addActivity(`Transaction recorded: Patient ${patientId} paid ₹${amount}`, 'update');
   };
 
   // Compute live statistics for the hospital
@@ -423,6 +692,7 @@ export const useHMISData = () => {
     beds,
     activities,
     staff,
+    dischargedPatients,
     admitPatient,
     dischargePatient,
     updateVitals,
@@ -430,6 +700,8 @@ export const useHMISData = () => {
     transferPatient,
     assignStaffToWard,
     bulkSetWardBedStatus,
+    addBillingCharge,
+    recordPatientPayment,
     getStatistics
   };
 };
