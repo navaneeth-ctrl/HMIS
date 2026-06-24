@@ -367,12 +367,18 @@ export const useHMISData = () => {
     let vacant = 0;
     let maintenance = 0;
     let highPriority = 0;
+    let mediumPriority = 0;
+    let lowPriority = 0;
 
     Object.values(beds).forEach(bed => {
       if (bed.status === 'occupied') {
         occupied++;
         if (bed.patient?.priority === 'high') {
           highPriority++;
+        } else if (bed.patient?.priority === 'medium') {
+          mediumPriority++;
+        } else if (bed.patient?.priority === 'low') {
+          lowPriority++;
         }
       } else if (bed.status === 'vacant') {
         vacant++;
@@ -405,6 +411,8 @@ export const useHMISData = () => {
       vacant,
       maintenance,
       highPriority,
+      mediumPriority,
+      lowPriority,
       occupancyRate: Math.round((occupied / totalBeds) * 100),
       wardStats
     };
