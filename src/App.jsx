@@ -22,7 +22,11 @@ import {
   CheckCircle,
   X,
   Hospital,
-  IndianRupee
+  IndianRupee,
+  ShieldAlert,
+  Volume2,
+  Send,
+  Check
 } from 'lucide-react';
 
 // Random mock data lists for the Emergency Admissions simulator
@@ -50,6 +54,11 @@ export default function App() {
   const [selectedBillingPatientId, setSelectedBillingPatientId] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [timeString, setTimeString] = useState('');
+  
+  // Alarms center drawer visibility
+  const [showAlarmsDrawer, setShowAlarmsDrawer] = useState(false);
+  const [customPagerMessage, setCustomPagerMessage] = useState('');
+  const [pagingAlarmId, setPagingAlarmId] = useState(null);
 
   // HMIS Data Hook
   const hmis = useHMISData();
@@ -126,10 +135,10 @@ export default function App() {
 
     if (hr < 50 || hr > 120 || spo2 < 90 || temp > 102) {
       alertType = 'danger';
-      message = `CRITICAL ALERT: Bed ${bedId} vitals outside safe thresholds!`;
+      message = `CRITICAL TELEMETRY ALERT: Bed ${bedId} vitals entered danger limits! Alarm logged in desk.`;
     } else if (hr < 60 || hr > 100 || spo2 < 94 || temp > 99.5) {
       alertType = 'warning';
-      message = `Warning: Bed ${bedId} vitals showing abnormal trends.`;
+      message = `Warning: Bed ${bedId} vitals showing abnormal thresholds. Alarm logged.`;
     }
 
     addToast(message, alertType);
@@ -156,7 +165,7 @@ export default function App() {
     }
   };
 
-  // Locator Callback from Directory
+  // Locator Callback from Directory/Alerts
   const handleLocatePatientBed = (wardId, bedId) => {
     setCurrentView('beds');
     setSelectedBedKey(`${wardId}-${bedId}`);
@@ -170,14 +179,12 @@ export default function App() {
 
   // Simulator: Emergency Admission
   const handleSimulateAdmit = () => {
-    // Find a vacant bed
     const vacantBeds = Object.values(hmis.beds).filter(b => b.status === 'vacant');
     if (vacantBeds.length === 0) {
       addToast('Simulation Error: All beds are currently occupied!', 'danger');
       return;
     }
 
-    // Select random bed
     const targetBed = vacantBeds[Math.floor(Math.random() * vacantBeds.length)];
     const randomName = SIM_NAMES[Math.floor(Math.random() * SIM_NAMES.length)];
     const randomAilment = SIM_AILMENTS[Math.floor(Math.random() * SIM_AILMENTS.length)];
@@ -197,14 +204,12 @@ export default function App() {
 
   // Simulator: Random Vitals Shift (warning / danger)
   const handleSimulateVitalsShift = () => {
-    // Find occupied beds
     const occupiedBeds = Object.values(hmis.beds).filter(b => b.status === 'occupied' && b.patient);
     if (occupiedBeds.length === 0) {
       addToast('Simulation Error: No active patients to shift vitals!', 'warning');
       return;
     }
 
-    // Select a random bed and apply bad vitals
     const targetBed = occupiedBeds[Math.floor(Math.random() * occupiedBeds.length)];
     const criticalType = Math.random() > 0.4 ? 'danger' : 'warning';
     
@@ -228,6 +233,15 @@ export default function App() {
     handleUpdateVitals(targetBed.wardId, targetBed.id, badVitals);
   };
 
+  const handlePageSubmit = (alarm) => {
+    if (!customPagerMessage.trim()) return;
+    const docName = hmis.staff[alarm.wardId]?.doctor || 'Duty Physician';
+    hmis.pageStaff(alarm.wardId, docName, customPagerMessage.trim());
+    addToast(`Pager alert dispatched to ${docName}`, 'success');
+    setCustomPagerMessage('');
+    setPagingAlarmId(null);
+  };
+
   if (!isLoggedIn) {
     return <AdminLogin onLoginSuccess={handleLoginSuccess} />;
   }
@@ -236,6 +250,9 @@ export default function App() {
   const selectedBedWardName = selectedBed 
     ? hmis.wards.find(w => w.id === selectedBed.wardId)?.name 
     : '';
+
+  const activeAlarms = hmis.alarms.filter(a => !a.resolved);
+  const resolvedAlarms = hmis.alarms.filter(a => a.resolved);
 
   return (
     <div className="hmis-container">
@@ -327,18 +344,12 @@ export default function App() {
 
             <button 
               className="notification-bell-btn" 
-              title={`${statistics.highPriority} high-risk alerts`}
-              onClick={() => {
-                if (statistics.highPriority > 0) {
-                  setCurrentView('patients');
-                  addToast('Showing high priority patient alerts.', 'info');
-                } else {
-                  addToast('No active clinical alerts.', 'success');
-                }
-              }}
+              title={`${activeAlarms.length} active telemetry alerts`}
+              onClick={() => setShowAlarmsDrawer(true)}
+              style={{ position: 'relative' }}
             >
               <Bell size={18} />
-              {statistics.highPriority > 0 && <span className="bell-badge" />}
+              {activeAlarms.length > 0 && <span className="bell-badge" style={{ background: 'var(--color-danger)', border: '2px solid white' }} />}
             </button>
           </div>
         </header>
@@ -405,9 +416,166 @@ export default function App() {
             onUpdateVitals={handleUpdateVitals}
             onSetMaintenance={handleSetMaintenance}
             onTransfer={handleTransferPatient}
+            onAddClinicalLog={hmis.addClinicalLog}
+            onToggleMedication={hmis.toggleMedicationAdministered}
+            onAddMedication={hmis.addPatientMedication}
             beds={hmis.beds}
             wards={hmis.wards}
           />
+        )}
+
+        {/* Central Telemetry Alarm Desk Drawer */}
+        {showAlarmsDrawer && (
+          <div className="alarms-drawer-overlay" onClick={() => setShowAlarmsDrawer(false)}>
+            <div className="alarms-drawer" onClick={(e) => e.stopPropagation()}>
+              
+              <div className="alarms-drawer-header">
+                <div>
+                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.15rem' }}>
+                    <ShieldAlert size={20} style={{ color: 'var(--color-danger)' }} />
+                    Telemetry Alarm Desk
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Monitor clinical threshold alerts ({activeAlarms.length} active)
+                  </span>
+                </div>
+                <button 
+                  onClick={() => setShowAlarmsDrawer(false)}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer' }}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="alarms-drawer-content">
+                {hmis.alarms.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-dim)' }}>
+                    <CheckCircle size={32} style={{ color: 'var(--color-success)', marginBottom: '12px' }} />
+                    <p style={{ fontSize: '0.85rem' }}>No clinical alerts active in the system.</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Active Alarm Section */}
+                    {activeAlarms.length > 0 && (
+                      <div>
+                        <h4 style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--color-danger)', letterSpacing: '0.05em', marginBottom: '10px', fontWeight: 700 }}>
+                          🚨 Active Alarms ({activeAlarms.length})
+                        </h4>
+                        
+                        <div style={{ display: 'flex', flexParagraph: 'column', flexDirection: 'column', gap: '12px' }}>
+                          {activeAlarms.map(alarm => (
+                            <div key={alarm.id} className={`alarm-card-item ${alarm.severity}`}>
+                              
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div>
+                                  <strong style={{ fontSize: '0.9rem', color: 'var(--text-main)' }}>{alarm.patientName}</strong>
+                                  <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                    {alarm.wardName} • Bed {alarm.bedId}
+                                  </span>
+                                </div>
+                                <span className={`badge priority-${alarm.severity === 'danger' ? 'high' : 'medium'}`} style={{ fontSize: '0.65rem' }}>
+                                  {alarm.severity.toUpperCase()}
+                                </span>
+                              </div>
+
+                              <p style={{ fontSize: '0.8rem', color: 'var(--text-main)', margin: '4px 0 0 0', lineHeight: '1.4' }}>
+                                {alarm.message}
+                              </p>
+
+                              <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+                                Triggered: {new Date(alarm.timestamp).toLocaleTimeString()}
+                              </span>
+
+                              {pagingAlarmId === alarm.id ? (
+                                <div style={{ background: '#f8fafc', padding: '10px', borderRadius: '6px', border: '1px solid var(--border-color)', marginTop: '6px' }} className="animate-fade-in">
+                                  <label style={{ fontSize: '0.7rem', display: 'block', marginBottom: '4px', fontWeight: 600 }}>Custom Pager Message</label>
+                                  <div style={{ display: 'flex', gap: '6px' }}>
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. Critical Vitals, request emergency check"
+                                      value={customPagerMessage}
+                                      onChange={(e) => setCustomPagerMessage(e.target.value)}
+                                      style={{
+                                        flex: 1,
+                                        padding: '4px 8px',
+                                        fontSize: '0.75rem',
+                                        borderRadius: '4px',
+                                        border: '1px solid var(--border-color)',
+                                        outline: 'none'
+                                      }}
+                                    />
+                                    <button 
+                                      onClick={() => handlePageSubmit(alarm)}
+                                      className="btn-primary" 
+                                      style={{ width: 'auto', padding: '0 8px', height: '28px' }}
+                                    >
+                                      <Send size={12} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              <div className="alarm-card-actions">
+                                <button
+                                  onClick={() => {
+                                    handleLocatePatientBed(alarm.wardId, alarm.bedId);
+                                    setShowAlarmsDrawer(false);
+                                  }}
+                                  className="btn-secondary"
+                                  style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                >
+                                  🔍 Inspect Bed
+                                </button>
+                                <button
+                                  onClick={() => setPagingAlarmId(pagingAlarmId === alarm.id ? null : alarm.id)}
+                                  className="btn-secondary"
+                                  style={{ padding: '4px 10px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <Volume2 size={12} />
+                                  Page Doctor
+                                </button>
+                                <button
+                                  onClick={() => hmis.resolveAlarm(alarm.id)}
+                                  className="btn-primary"
+                                  style={{ padding: '4px 10px', fontSize: '0.75rem', width: 'auto', background: 'linear-gradient(135deg, var(--color-success) 0%, #059669 100%)', boxShadow: 'none' }}
+                                >
+                                  Resolve
+                                </button>
+                              </div>
+
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Resolved History Section */}
+                    {resolvedAlarms.length > 0 && (
+                      <div style={{ marginTop: '12px' }}>
+                        <h4 style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: 'var(--text-dim)', letterSpacing: '0.05em', marginBottom: '10px', fontWeight: 700 }}>
+                          ✓ Resolved Log ({resolvedAlarms.length})
+                        </h4>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {resolvedAlarms.slice(0, 5).map(alarm => (
+                            <div key={alarm.id} className="alarm-card-item resolved" style={{ padding: '10px 14px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                                <strong>{alarm.patientName} (Bed {alarm.bedId})</strong>
+                                <span style={{ color: 'var(--color-success)', fontWeight: 600 }}>Cleared</span>
+                              </div>
+                              <span style={{ fontSize: '0.68rem', color: 'var(--text-dim)' }}>
+                                {alarm.message}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+            </div>
+          </div>
         )}
 
         {/* Bottom Right Floating Toasts Container */}

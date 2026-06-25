@@ -102,7 +102,7 @@ const getSeedPatients = () => ({
       amountPaid: 3500,
       charges: [
         { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 },
-        { id: 'chg-ecg', desc: 'Electrocardiogram (ECG)', category: 'Diagnostics', stroke: 'Test', cost: 450, qty: 1 },
+        { id: 'chg-ecg', desc: 'Electrocardiogram (ECG)', category: 'Diagnostics', cost: 450, qty: 1 },
         { id: 'chg-echo', desc: 'Transthoracic Echocardiogram', category: 'Diagnostics', cost: 1200, qty: 1 },
         { id: 'chg-med1', desc: 'Diuretics & Vasodilators IV', category: 'Pharmacy', cost: 650, qty: 1 }
       ]
@@ -329,26 +329,46 @@ export const useHMISData = () => {
       parsed = initialState;
     }
 
-    // Patch any active patient missing the billing field (stale localStorage data)
+    // Patch any active patient missing fields (backwards compatibility for localstorage)
     Object.keys(parsed).forEach(key => {
       const bed = parsed[key];
-      if (bed.status === 'occupied' && bed.patient && !bed.patient.billing) {
+      if (bed.status === 'occupied' && bed.patient) {
         const wardId = bed.wardId;
-        parsed[key] = {
-          ...bed,
-          patient: {
-            ...bed.patient,
-            billing: {
-              baseRate: WARD_RATES[wardId] || 500,
-              amountPaid: 0,
-              charges: [
-                { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 }
-              ]
+        
+        // 1. Patch billing
+        if (!bed.patient.billing) {
+          parsed[key].patient.billing = {
+            baseRate: WARD_RATES[wardId] || 500,
+            amountPaid: 0,
+            charges: [
+              { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 }
+            ]
+          };
+        }
+        
+        // 2. Patch clinical EHR logs
+        if (!bed.patient.clinicalLogs) {
+          parsed[key].patient.clinicalLogs = [
+            { 
+              id: `log-init-${key}`, 
+              timestamp: new Date(Date.now() - 3600000 * 2).toISOString(), 
+              note: `Initial clinical checkup completed. Diagnosis: ${bed.patient.ailment}. Under active observation.`, 
+              doctor: bed.patient.doctor || 'Dr. Sarah Jenkins' 
             }
-          }
-        };
+          ];
+        }
+
+        // 3. Patch Medication Administration Record (MAR)
+        if (!bed.patient.mar) {
+          parsed[key].patient.mar = [
+            { id: `mar-1-${key}`, time: '08:00 AM', medName: 'Paracetamol 650mg (Oral)', status: 'administered', nurse: 'Nurse Ratched' },
+            { id: `mar-2-${key}`, time: '02:00 PM', medName: 'Salbutamol Inhaler / Nebulization', status: 'pending', nurse: '' },
+            { id: `mar-3-${key}`, time: '08:00 PM', medName: 'Antibiotic IV Prophylaxis', status: 'pending', nurse: '' }
+          ];
+        }
       }
     });
+
     return parsed;
   });
 
@@ -392,6 +412,44 @@ export const useHMISData = () => {
     return saved ? JSON.parse(saved) : getSeedDischargedPatients();
   });
 
+  // Automated vital telemetry alarms list
+  const [alarms, setAlarms] = useState(() => {
+    const saved = localStorage.getItem('hmis_alarms');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return [
+      { 
+        id: 'alarm-1', 
+        patientId: 'P-1090', 
+        patientName: 'Steve Rogers', 
+        wardId: 'er', 
+        wardName: 'Emergency Room (ER)', 
+        bedId: 'A4', 
+        message: 'Telemetry Warning: Low oxygen levels observed (95% SpO2)', 
+        severity: 'warning', 
+        timestamp: new Date(Date.now() - 3600000).toISOString(), 
+        resolved: false 
+      },
+      { 
+        id: 'alarm-2', 
+        patientId: 'P-5022', 
+        patientName: 'Arthur Pendragon', 
+        wardId: 'icu', 
+        wardName: 'Intensive Care Unit (ICU)', 
+        bedId: 'A1', 
+        message: 'CRITICAL ALARM: Cardiac Tachycardia (112 bpm)', 
+        severity: 'danger', 
+        timestamp: new Date(Date.now() - 1800000).toISOString(), 
+        resolved: false 
+      }
+    ];
+  });
+
   useEffect(() => {
     localStorage.setItem('hmis_beds', JSON.stringify(beds));
   }, [beds]);
@@ -407,6 +465,10 @@ export const useHMISData = () => {
   useEffect(() => {
     localStorage.setItem('hmis_discharged', JSON.stringify(dischargedPatients));
   }, [dischargedPatients]);
+
+  useEffect(() => {
+    localStorage.setItem('hmis_alarms', JSON.stringify(alarms));
+  }, [alarms]);
 
   const addActivity = (text, type = 'info') => {
     const newActivity = {
@@ -424,6 +486,19 @@ export const useHMISData = () => {
       id: `P-${Math.floor(1000 + Math.random() * 9000)}`,
       ...patientData,
       admittedAt: new Date().toISOString(),
+      clinicalLogs: [
+        {
+          id: `log-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          note: `Patient admitted with chief complaints: ${patientData.ailment}. Setup initial monitoring protocol.`,
+          doctor: patientData.doctor
+        }
+      ],
+      mar: [
+        { id: `mar-1-${Date.now()}`, time: '08:00 AM', medName: 'Paracetamol 650mg (Oral)', status: 'pending', nurse: '' },
+        { id: `mar-2-${Date.now()}`, time: '02:00 PM', medName: 'Antibiotic IV Prophylaxis', status: 'pending', nurse: '' },
+        { id: `mar-3-${Date.now()}`, time: '08:00 PM', medName: 'Budensonide Nebulizer', status: 'pending', nurse: '' }
+      ],
       vitals: patientData.vitals || {
         heartRate: Math.floor(70 + Math.random() * 20),
         bloodPressure: '120/80',
@@ -476,6 +551,9 @@ export const useHMISData = () => {
       }
     };
 
+    // Auto-resolve any alarms for this patient
+    setAlarms(prev => prev.map(a => a.patientId === patient.id ? { ...a, resolved: true } : a));
+
     // Move to discharged database
     setDischargedPatients(prev => [finalizedPatient, ...prev]);
 
@@ -522,6 +600,34 @@ export const useHMISData = () => {
       }
     }));
 
+    // Trigger Alarm if vitals are abnormal
+    if (status !== 'normal') {
+      const hrText = (hr < 50 || hr > 120) ? `HR ${hr} bpm (Abnormal). ` : '';
+      const spo2Text = (spo2 < 94) ? `SpO2 ${spo2}% (Hypoxia warning). ` : '';
+      const tempText = (temp > 99.5 || temp < 97.0) ? `Temp ${temp}°F. ` : '';
+      const message = `Telemetry Shift: ${hrText}${spo2Text}${tempText}`;
+
+      setAlarms(prev => {
+        // Only append if there isn't an active unresolved alarm for this patient
+        const exists = prev.some(a => a.patientId === currentPatient.id && !a.resolved);
+        if (exists) return prev;
+
+        const newAlarm = {
+          id: `alarm-${Date.now()}`,
+          patientId: currentPatient.id,
+          patientName: currentPatient.name,
+          wardId,
+          wardName: WARDS.find(w => w.id === wardId)?.name || wardId,
+          bedId,
+          message,
+          severity: status,
+          timestamp: new Date().toISOString(),
+          resolved: false
+        };
+        return [newAlarm, ...prev];
+      });
+    }
+
     const statusMsg = status !== 'normal' ? ` (Vitals Status: ${status.toUpperCase()})` : '';
     addActivity(`Vitals updated for ${currentPatient.name} in Bed ${bedId}${statusMsg}`, 'update');
   };
@@ -561,12 +667,10 @@ export const useHMISData = () => {
         status: 'occupied',
         patient: {
           ...patient,
-          // Update base rate for new ward bed
           billing: {
             ...patient.billing,
             baseRate: WARD_RATES[toWardId] || patient.billing.baseRate
           },
-          // Update assigned physician if transferring to a ward with different staff
           doctor: staff[toWardId]?.doctor || patient.doctor
         }
       }
@@ -726,6 +830,108 @@ export const useHMISData = () => {
     addActivity(`Transaction recorded: Patient ${patientId} paid ₹${amount}`, 'update');
   };
 
+  // EHR clinical SOAP log entry writer
+  const addClinicalLog = (wardId, bedId, note, doctor) => {
+    const key = `${wardId}-${bedId}`;
+    setBeds(prev => {
+      const bed = prev[key];
+      if (!bed || !bed.patient) return prev;
+      
+      const newLog = {
+        id: `log-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        note,
+        doctor: doctor || bed.patient.doctor || 'Dr. Assigned'
+      };
+      
+      return {
+        ...prev,
+        [key]: {
+          ...bed,
+          patient: {
+            ...bed.patient,
+            clinicalLogs: [...(bed.patient.clinicalLogs || []), newLog]
+          }
+        }
+      };
+    });
+    addActivity(`New clinical note recorded for Bed ${bedId}`, 'update');
+  };
+
+  // EHR MAR Medication checklists marker
+  const toggleMedicationAdministered = (wardId, bedId, marId, isChecked, nurseName) => {
+    const key = `${wardId}-${bedId}`;
+    setBeds(prev => {
+      const bed = prev[key];
+      if (!bed || !bed.patient) return prev;
+      
+      const nextMar = (bed.patient.mar || []).map(item => {
+        if (item.id === marId) {
+          return {
+            ...item,
+            status: isChecked ? 'administered' : 'pending',
+            nurse: isChecked ? (nurseName || 'Nurse Staff') : ''
+          };
+        }
+        return item;
+      });
+      
+      return {
+        ...prev,
+        [key]: {
+          ...bed,
+          patient: {
+            ...bed.patient,
+            mar: nextMar
+          }
+        }
+      };
+    });
+  };
+
+  // EHR Add Medication Schedule item
+  const addPatientMedication = (wardId, bedId, medName, time) => {
+    const key = `${wardId}-${bedId}`;
+    setBeds(prev => {
+      const bed = prev[key];
+      if (!bed || !bed.patient) return prev;
+      
+      const newMar = {
+        id: `mar-${Date.now()}`,
+        time,
+        medName,
+        status: 'pending',
+        nurse: ''
+      };
+      
+      return {
+        ...prev,
+        [key]: {
+          ...bed,
+          patient: {
+            ...bed.patient,
+            mar: [...(bed.patient.mar || []), newMar]
+          }
+        }
+      };
+    });
+    addActivity(`Medication schedule "${medName}" appended to Bed ${bedId}`, 'update');
+  };
+
+  // Alarm management
+  const resolveAlarm = (alarmId) => {
+    setAlarms(prev => prev.map(a => a.id === alarmId ? { ...a, resolved: true } : a));
+    addActivity(`Telemetry Alarm ${alarmId.substring(0, 8)} cleared by administrator`, 'update');
+  };
+
+  const dismissAlarm = (alarmId) => {
+    setAlarms(prev => prev.filter(a => a.id !== alarmId));
+  };
+
+  const pageStaff = (wardId, doctorName, message) => {
+    addActivity(`🚨 PAGER ALERT dispatched to Chief Staff (${doctorName}) for Ward ${wardId.toUpperCase()}: "${message}"`, 'info');
+  };
+
   // Compute live statistics for the hospital
   const getStatistics = () => {
     const totalBeds = Object.keys(beds).length;
@@ -790,6 +996,7 @@ export const useHMISData = () => {
     activities,
     staff,
     dischargedPatients,
+    alarms,
     admitPatient,
     dischargePatient,
     updateVitals,
@@ -799,6 +1006,12 @@ export const useHMISData = () => {
     bulkSetWardBedStatus,
     addBillingCharge,
     recordPatientPayment,
-    getStatistics
+    getStatistics,
+    addClinicalLog,
+    toggleMedicationAdministered,
+    addPatientMedication,
+    resolveAlarm,
+    dismissAlarm,
+    pageStaff
   };
 };
