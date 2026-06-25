@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Users, Activity, ShieldCheck, Heart, User, Check, Edit2, AlertCircle, Command } from 'lucide-react';
+import { Users, Activity, ShieldCheck, Heart, User, Check, Edit2, AlertCircle, Command, Search } from 'lucide-react';
 
 export default function WardManagement({ wards, beds, staff, onAssignStaff, onBulkStatusChange }) {
   const [editingWardId, setEditingWardId] = useState(null);
   const [editNurse, setEditNurse] = useState('');
   const [editDoctor, setEditDoctor] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Calculate stress level based on occupancy percentage
   const getLoadStatus = (rate) => {
@@ -30,17 +31,34 @@ export default function WardManagement({ wards, beds, staff, onAssignStaff, onBu
     setEditingWardId(null);
   };
 
+  const filteredWards = wards.filter(ward => 
+    ward.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ward.shortName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="dashboard-content">
-      <div className="filters-bar" style={{ justifyContent: 'space-between' }}>
+      <div className="filters-bar" style={{ justifyContent: 'space-between', gap: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
           <Command size={18} style={{ color: 'var(--color-primary)' }} />
-          <span>Monitor ward loads, update clinical staffing rosters, and launch bulk sanitation actions.</span>
+          <span>Monitor ward loads, update staffing rosters, and launch bulk sanitation actions.</span>
+        </div>
+        
+        <div className="search-box" style={{ maxWidth: '300px', flex: '1', position: 'relative' }}>
+          <Search size={16} className="search-icon" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+          <input
+            type="text"
+            placeholder="Search Wards..."
+            className="search-input"
+            value={searchQuery}
+            style={{ padding: '8px 12px 8px 36px', fontSize: '0.85rem', width: '100%', borderRadius: '6px', border: '1px solid var(--border-color)' }}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '24px' }}>
-        {wards.map(ward => {
+        {filteredWards.map(ward => {
           // Gather stats for this ward
           const wardBeds = Object.values(beds).filter(b => b.wardId === ward.id);
           const total = wardBeds.length;

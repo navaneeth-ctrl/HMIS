@@ -1,12 +1,41 @@
 import { useState, useEffect } from 'react';
 
-const WARDS = [
+const BASE_WARDS = [
   { id: 'icu', name: 'Intensive Care Unit (ICU)', shortName: 'ICU' },
   { id: 'gen_a', name: 'General Ward A', shortName: 'Gen A' },
   { id: 'gen_b', name: 'General Ward B', shortName: 'Gen B' },
   { id: 'peds', name: 'Pediatric Ward', shortName: 'Peds' },
   { id: 'er', name: 'Emergency Room (ER)', shortName: 'ER' }
 ];
+
+const SPECIALIZED_NAMES = [
+  'Cardiology', 'Neurology', 'Orthopedics', 'Oncology', 'Maternity', 
+  'Neonatal ICU', 'Geriatric', 'Psychiatric', 'Dermatology', 'Urology',
+  'Nephrology', 'Pulmonology', 'Gastroenterology', 'Endocrinology', 'Hematology',
+  'Rheumatology', 'Ophthalmology', 'Otolaryngology', 'Gynecology', 'Obstetrics',
+  'Burn Unit', 'Isolation Ward', 'Surgical Ward', 'Post-Op Recovery', 'Rehabilitation'
+];
+
+const generatedWards = [...BASE_WARDS];
+SPECIALIZED_NAMES.forEach((name, index) => {
+  const id = `spec_${index + 1}`;
+  generatedWards.push({
+    id,
+    name: `${name} Ward`,
+    shortName: name.length > 8 ? name.substring(0, 7) + '.' : name
+  });
+});
+
+while (generatedWards.length < 60) {
+  const num = generatedWards.length + 1;
+  generatedWards.push({
+    id: `ward_${num}`,
+    name: `Ward ${num} (General)`,
+    shortName: `Ward ${num}`
+  });
+}
+
+const WARDS = generatedWards;
 
 const INITIAL_ACTIVITIES = [
   { id: 'act-1', text: 'Patient Clara Oswald admitted to ICU Bed B3', time: '10 mins ago', type: 'admission' },
@@ -277,7 +306,50 @@ const getSeedDischargedPatients = () => [
 export const useHMISData = () => {
   const [beds, setBeds] = useState(() => {
     const saved = localStorage.getItem('hmis_beds');
-    return saved ? JSON.parse(saved) : createInitialState();
+    let parsed = null;
+    if (saved) {
+      try {
+        parsed = JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
+    // Check if we need to initialize or merge
+    // 60 wards * 30 beds = 1800 beds
+    if (!parsed || Object.keys(parsed).length < 1800) {
+      const initialState = createInitialState();
+      if (parsed) {
+        Object.keys(parsed).forEach(key => {
+          if (initialState[key]) {
+            initialState[key] = parsed[key];
+          }
+        });
+      }
+      parsed = initialState;
+    }
+
+    // Patch any active patient missing the billing field (stale localStorage data)
+    Object.keys(parsed).forEach(key => {
+      const bed = parsed[key];
+      if (bed.status === 'occupied' && bed.patient && !bed.patient.billing) {
+        const wardId = bed.wardId;
+        parsed[key] = {
+          ...bed,
+          patient: {
+            ...bed.patient,
+            billing: {
+              baseRate: WARD_RATES[wardId] || 500,
+              amountPaid: 0,
+              charges: [
+                { id: 'chg-consult', desc: 'Attending Physician Consultation', category: 'Consultation', cost: 500, qty: 1 }
+              ]
+            }
+          }
+        };
+      }
+    });
+    return parsed;
   });
 
   const [activities, setActivities] = useState(() => {
@@ -287,7 +359,32 @@ export const useHMISData = () => {
 
   const [staff, setStaff] = useState(() => {
     const saved = localStorage.getItem('hmis_staff');
-    return saved ? JSON.parse(saved) : DEFAULT_STAFF;
+    let parsedStaff = null;
+    if (saved) {
+      try {
+        parsedStaff = JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    if (!parsedStaff) {
+      parsedStaff = { ...DEFAULT_STAFF };
+    }
+    
+    // Ensure all 60 wards have default staff
+    const docs = ['Dr. Sarah Jenkins', 'Dr. Stephen Strange', 'Dr. Alfred Penny', 'Dr. Otto Octavius', 'Dr. David Tennant', 'Dr. Helen Cho', 'Dr. Peggy Carter', 'Dr. Gregory House', 'Dr. Meredith Grey', 'Dr. Shaun Murphy'];
+    const nurses = ['Nurse Ratched', 'Nurse Joy', 'Nurse Nightingale', 'Nurse Abby', 'Nurse Clara', 'Nurse Jackie', 'Nurse Carla', 'Nurse Carol'];
+    
+    WARDS.forEach(w => {
+      if (!parsedStaff[w.id]) {
+        parsedStaff[w.id] = {
+          doctor: docs[Math.floor(Math.random() * docs.length)],
+          nurse: nurses[Math.floor(Math.random() * nurses.length)]
+        };
+      }
+    });
+    
+    return parsedStaff;
   });
 
   const [dischargedPatients, setDischargedPatients] = useState(() => {

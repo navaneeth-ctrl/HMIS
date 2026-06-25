@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Search, MapPin, Trash2, ShieldAlert, Activity, User } from 'lucide-react';
+import { Search, MapPin, Trash2, ShieldAlert, Activity, User, IndianRupee } from 'lucide-react';
 
-export default function PatientRegistry({ beds, wards, onLocatePatientBed, onDischargePatient }) {
+export default function PatientRegistry({ beds, wards, onLocatePatientBed, onDischargePatient, onViewBill }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [wardFilter, setWardFilter] = useState('all');
   const [priorityFilter, setPriorityFilter] = useState('all');
@@ -146,6 +146,16 @@ export default function PatientRegistry({ beds, wards, onLocatePatientBed, onDis
                         >
                           <MapPin size={14} />
                           Locate
+                        </button>
+
+                        <button
+                          onClick={() => onViewBill && onViewBill(patient.id)}
+                          className="btn-secondary"
+                          style={{ padding: '6px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '4px', borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+                          title="View billing invoice"
+                        >
+                          <IndianRupee size={14} />
+                          Bill
                         </button>
                         
                         <button

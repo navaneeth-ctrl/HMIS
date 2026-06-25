@@ -47,6 +47,7 @@ export default function App() {
   
   const [currentView, setCurrentView] = useState('dashboard'); // dashboard, beds, patients, wards, billing
   const [selectedBedKey, setSelectedBedKey] = useState(null);
+  const [selectedBillingPatientId, setSelectedBillingPatientId] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [timeString, setTimeString] = useState('');
 
@@ -159,6 +160,12 @@ export default function App() {
   const handleLocatePatientBed = (wardId, bedId) => {
     setCurrentView('beds');
     setSelectedBedKey(`${wardId}-${bedId}`);
+  };
+
+  // Quick jump from Patient Registry to their Billing invoice
+  const handleViewPatientBill = (patientId) => {
+    setSelectedBillingPatientId(patientId);
+    setCurrentView('billing');
   };
 
   // Simulator: Emergency Admission
@@ -361,6 +368,7 @@ export default function App() {
             wards={hmis.wards}
             onLocatePatientBed={handleLocatePatientBed}
             onDischargePatient={hmis.dischargePatient}
+            onViewBill={handleViewPatientBill}
           />
         )}
 
@@ -381,6 +389,8 @@ export default function App() {
             wards={hmis.wards}
             onAddCharge={hmis.addBillingCharge}
             onRecordPayment={hmis.recordPatientPayment}
+            initialPatientId={selectedBillingPatientId}
+            onInitialPatientConsumed={() => setSelectedBillingPatientId(null)}
           />
         )}
 

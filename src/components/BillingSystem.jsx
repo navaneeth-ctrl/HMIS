@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { Search, IndianRupee, CreditCard, Plus, Printer, CheckCircle, AlertCircle, FileText, User, ArrowLeftRight, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Search, IndianRupee, CreditCard, Plus, Printer, CheckCircle, AlertCircle, FileText, User, ArrowLeftRight, Trash2, Activity } from 'lucide-react';
 
-export default function BillingSystem({ beds, dischargedPatients, wards, onAddCharge, onRecordPayment }) {
+export default function BillingSystem({ beds, dischargedPatients, wards, onAddCharge, onRecordPayment, initialPatientId, onInitialPatientConsumed }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState(null);
 
@@ -15,6 +15,14 @@ export default function BillingSystem({ beds, dischargedPatients, wards, onAddCh
   // Form states for recording payments
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
+
+  // Auto-select patient when navigated from Patient Registry
+  useEffect(() => {
+    if (initialPatientId) {
+      setSelectedPatientId(initialPatientId);
+      if (onInitialPatientConsumed) onInitialPatientConsumed();
+    }
+  }, [initialPatientId]);
 
   // Collect all patients (active inpatients + discharged history)
   const activeInpatients = Object.values(beds)
@@ -43,57 +51,69 @@ export default function BillingSystem({ beds, dischargedPatients, wards, onAddCh
   const calculateInvoice = (patient) => {
     if (!patient) return null;
 
-    // 1. Calculate stay duration
-    let days = 1;
-    if (patient.status === 'admitted') {
-      const durationMs = Date.now() - new Date(patient.admittedAt).getTime();
-      days = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
-    } else {
-      // Discharged patient already has days computed or timestamp diff
-      if (patient.billing.daysAdmitted) {
-        days = patient.billing.daysAdmitted;
-      } else {
-        const durationMs = new Date(patient.dischargedAt).getTime() - new Date(patient.admittedAt).getTime();
+    try {
+      // Ensure billing object exists with defaults
+      const billing = patient.billing || {
+        baseRate: 500,
+        amountPaid: 0,
+        charges: []
+      };
+
+      // 1. Calculate stay duration
+      let days = 1;
+      if (patient.status === 'admitted') {
+        const durationMs = Date.now() - new Date(patient.admittedAt).getTime();
         days = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
+      } else {
+        if (billing.daysAdmitted) {
+          days = billing.daysAdmitted;
+        } else if (patient.dischargedAt && patient.admittedAt) {
+          const durationMs = new Date(patient.dischargedAt).getTime() - new Date(patient.admittedAt).getTime();
+          days = Math.max(1, Math.ceil(durationMs / (1000 * 60 * 60 * 24)));
+        }
       }
+
+      const baseRate = billing.baseRate || 500;
+      const roomCostTotal = baseRate * days;
+
+      // 2. Gather itemized charges
+      const charges = Array.isArray(billing.charges) ? billing.charges : [];
+      const itemizedCharges = [
+        {
+          id: 'room-stay',
+          desc: `Room Stay: Bed ${patient.bedId || '—'} (${days} Day${days > 1 ? 's' : ''})`,
+          category: 'Room/Stay',
+          cost: baseRate,
+          qty: days,
+          total: roomCostTotal
+        },
+        ...charges.map(c => ({
+          ...c,
+          total: (c.cost || 0) * (c.qty || 1)
+        }))
+      ];
+
+      // 3. Compute totals
+      const subtotal = itemizedCharges.reduce((sum, item) => sum + item.total, 0);
+      const tax = Math.round(subtotal * 0.05);
+      const grandTotal = subtotal + tax;
+      const amountPaid = billing.amountPaid || 0;
+      const balanceDue = grandTotal - amountPaid;
+
+      return {
+        days,
+        roomCostTotal,
+        itemizedCharges,
+        subtotal,
+        tax,
+        grandTotal,
+        amountPaid,
+        balanceDue
+      };
+    } catch (err) {
+      console.error('Invoice calculation error:', err);
+      return null;
     }
-
-    const baseRate = patient.billing.baseRate || 500;
-    const roomCostTotal = baseRate * days;
-
-    // 2. Gather itemized charges
-    const itemizedCharges = [
-      {
-        id: 'room-stay',
-        desc: `Room Stay: Bed ${patient.bedId} (${days} Day${days > 1 ? 's' : ''})`,
-        category: 'Room/Stay',
-        cost: baseRate,
-        qty: days,
-        total: roomCostTotal
-      },
-      ...patient.billing.charges.map(c => ({
-        ...c,
-        total: c.cost * c.qty
-      }))
-    ];
-
-    // 3. Compute totals
-    const subtotal = itemizedCharges.reduce((sum, item) => sum + item.total, 0);
-    const tax = Math.round(subtotal * 0.05); // 5% CGST/SGST Hospital Tax
-    const grandTotal = subtotal + tax;
-    const amountPaid = patient.billing.amountPaid || 0;
-    const balanceDue = grandTotal - amountPaid;
-
-    return {
-      days,
-      roomCostTotal,
-      itemizedCharges,
-      subtotal,
-      tax,
-      grandTotal,
-      amountPaid,
-      balanceDue
-    };
   };
 
   const invoice = calculateInvoice(selectedPatient);
@@ -157,58 +177,107 @@ export default function BillingSystem({ beds, dischargedPatients, wards, onAddCh
 
           {/* Quick pick side roster */}
           <div className="dashboard-panel" style={{ flex: 1, minHeight: '350px', maxHeight: '550px', overflowY: 'auto' }}>
-            <h4 style={{ fontSize: '0.9rem', color: 'var(--text-main)', fontWeight: 600, borderBottom: '1px solid var(--border-color)', paddingBottom: '10px' }}>
-              Hospital Admissions Roster
-            </h4>
             
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
-              {filteredSuggestions.length === 0 ? (
-                <div style={{ padding: '20px 0', textAlignment: 'center', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
-                  No patients found.
+            {/* Active Inpatients Section */}
+            {activeInpatients.length > 0 && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <Activity size={13} style={{ color: 'var(--color-danger)' }} />
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-danger)' }}>Active Inpatients</span>
                 </div>
-              ) : (
-                filteredSuggestions.map(p => {
-                  const isActive = p.status === 'admitted';
-                  const isSelected = selectedPatientId === p.id;
-                  const wardLabel = wards.find(w => w.id === p.wardId)?.shortName || p.wardId;
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
+                  {activeInpatients
+                    .filter(p => {
+                      const q = searchQuery.toLowerCase();
+                      return !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
+                    })
+                    .map(p => {
+                      const isSelected = selectedPatientId === p.id;
+                      const wardLabel = wards.find(w => w.id === p.wardId)?.shortName || p.wardId;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => setSelectedPatientId(p.id)}
+                          className="sidebar-item"
+                          style={{
+                            padding: '10px 12px',
+                            border: isSelected ? '1px solid var(--color-danger)' : '1px solid rgba(239,68,68,0.15)',
+                            background: isSelected
+                              ? 'linear-gradient(90deg, rgba(239,68,68,0.08) 0%, rgba(239,68,68,0.02) 100%)'
+                              : 'rgba(239,68,68,0.03)',
+                            display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px',
+                            borderRadius: '8px', cursor: 'pointer', width: '100%', transform: 'none', transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 650, color: 'var(--text-main)', fontSize: '0.88rem' }}>{p.name}</span>
+                            <span className="badge status-occupied" style={{ fontSize: '0.62rem', padding: '2px 6px' }}>Admitted</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                            <span>ID: <code>{p.id}</code></span>
+                            <span>{wardLabel} · Bed {p.bedId}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              </>
+            )}
 
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => setSelectedPatientId(p.id)}
-                      className="sidebar-item"
-                      style={{
-                        padding: '10px 12px',
-                        border: isSelected ? '1px solid var(--color-primary)' : '1px solid transparent',
-                        background: isSelected 
-                          ? 'linear-gradient(90deg, rgba(99, 102, 241, 0.08) 0%, rgba(99, 102, 241, 0.02) 100%)' 
-                          : 'rgba(0,0,0,0.015)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'flex-start',
-                        gap: '4px',
-                        borderRadius: '8px',
-                        cursor: 'pointer',
-                        width: '100%',
-                        transform: 'none',
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 650, color: 'var(--text-main)', fontSize: '0.88rem' }}>{p.name}</span>
-                        <span className={`badge ${isActive ? 'status-vacant' : 'badge-low'}`} style={{ fontSize: '0.65rem', padding: '2px 6px' }}>
-                          {isActive ? 'Active' : 'Archived'}
-                        </span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                        <span>Reg ID: <code>{p.id}</code></span>
-                        <span>{wardLabel} ({p.bedId})</span>
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+            {/* Discharged / Archived Section */}
+            {dischargedPatients.filter(p => {
+              const q = searchQuery.toLowerCase();
+              return !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
+            }).length > 0 && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                  <FileText size={13} style={{ color: 'var(--text-dim)' }} />
+                  <span style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)' }}>Discharged / Archived</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {dischargedPatients
+                    .filter(p => {
+                      const q = searchQuery.toLowerCase();
+                      return !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
+                    })
+                    .map(p => {
+                      const isSelected = selectedPatientId === p.id;
+                      const wardLabel = wards.find(w => w.id === p.wardId)?.shortName || p.wardId;
+                      return (
+                        <button
+                          key={p.id}
+                          onClick={() => setSelectedPatientId(p.id)}
+                          className="sidebar-item"
+                          style={{
+                            padding: '10px 12px',
+                            border: isSelected ? '1px solid var(--color-primary)' : '1px solid transparent',
+                            background: isSelected
+                              ? 'linear-gradient(90deg, rgba(99,102,241,0.08) 0%, rgba(99,102,241,0.02) 100%)'
+                              : 'rgba(0,0,0,0.015)',
+                            display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px',
+                            borderRadius: '8px', cursor: 'pointer', width: '100%', transform: 'none', transition: 'all 0.15s ease'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 650, color: 'var(--text-main)', fontSize: '0.88rem' }}>{p.name}</span>
+                            <span className="badge badge-low" style={{ fontSize: '0.62rem', padding: '2px 6px' }}>Archived</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                            <span>ID: <code>{p.id}</code></span>
+                            <span>{wardLabel} · {p.bedId}</span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              </>
+            )}
+
+            {activeInpatients.length === 0 && dischargedPatients.length === 0 && (
+              <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+                No patients found.
+              </div>
+            )}
           </div>
         </div>
 
