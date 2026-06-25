@@ -7,6 +7,7 @@ import BedDetailModal from './components/BedDetailModal';
 import PatientRegistry from './components/PatientRegistry';
 import WardManagement from './components/WardManagement';
 import BillingSystem from './components/BillingSystem';
+import DoctorsManagement from './components/DoctorsManagement';
 import { 
   Activity, 
   LayoutDashboard, 
@@ -299,6 +300,14 @@ export default function App() {
           </button>
 
           <button 
+            className={`sidebar-item ${currentView === 'doctors' ? 'active' : ''}`}
+            onClick={() => setCurrentView('doctors')}
+          >
+            <Users size={18} style={{ color: 'var(--color-primary)' }} />
+            <span>Doctors & Portal</span>
+          </button>
+
+          <button 
             className={`sidebar-item ${currentView === 'billing' ? 'active' : ''}`}
             onClick={() => setCurrentView('billing')}
           >
@@ -332,7 +341,7 @@ export default function App() {
         <header className="top-header">
           <div className="header-title-area">
             <h2 style={{ textTransform: 'capitalize' }}>
-              {currentView === 'dashboard' ? 'Overview Dashboard' : currentView === 'beds' ? 'Bed Allocation Map' : currentView === 'patients' ? 'Inpatient Directory' : currentView === 'wards' ? 'Ward Coordinator' : 'Patient Billing Ledger'}
+              {currentView === 'dashboard' ? 'Overview Dashboard' : currentView === 'beds' ? 'Bed Allocation Map' : currentView === 'patients' ? 'Inpatient Directory' : currentView === 'wards' ? 'Ward Coordinator' : currentView === 'doctors' ? 'Doctors & Workspace' : 'Patient Billing Ledger'}
             </h2>
           </div>
 
@@ -402,6 +411,19 @@ export default function App() {
             onRecordPayment={hmis.recordPatientPayment}
             initialPatientId={selectedBillingPatientId}
             onInitialPatientConsumed={() => setSelectedBillingPatientId(null)}
+            onSettleCharge={hmis.settleBillingCharge}
+          />
+        )}
+
+        {currentView === 'doctors' && (
+          <DoctorsManagement
+            beds={hmis.beds}
+            doctors={hmis.doctors}
+            doctorAlerts={hmis.doctorAlerts}
+            registerDoctor={hmis.registerDoctor}
+            clearDoctorAlert={hmis.clearDoctorAlert}
+            onAddCharge={hmis.addBillingCharge}
+            wards={hmis.wards}
           />
         )}
 
@@ -421,6 +443,7 @@ export default function App() {
             onAddMedication={hmis.addPatientMedication}
             beds={hmis.beds}
             wards={hmis.wards}
+            doctors={hmis.doctors}
           />
         )}
 

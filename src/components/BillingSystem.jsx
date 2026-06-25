@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, IndianRupee, CreditCard, Plus, Printer, CheckCircle, AlertCircle, FileText, User, ArrowLeftRight, Trash2, Activity } from 'lucide-react';
 
-export default function BillingSystem({ beds, dischargedPatients, wards, onAddCharge, onRecordPayment, initialPatientId, onInitialPatientConsumed }) {
+export default function BillingSystem({ beds, dischargedPatients, wards, onAddCharge, onRecordPayment, initialPatientId, onInitialPatientConsumed, onSettleCharge }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPatientId, setSelectedPatientId] = useState(null);
 
@@ -350,22 +350,56 @@ export default function BillingSystem({ beds, dischargedPatients, wards, onAddCh
                         <th style={{ padding: '10px 12px', textAlign: 'right' }}>Rate (₹)</th>
                         <th style={{ padding: '10px 12px', textAlign: 'center' }}>Qty</th>
                         <th style={{ padding: '10px 12px', textAlign: 'right' }}>Total Cost (₹)</th>
+                        <th style={{ padding: '10px 12px', textAlign: 'right' }}>Status / Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {invoice.itemizedCharges.map((item) => (
-                        <tr key={item.id}>
-                          <td style={{ padding: '10px 12px', fontWeight: 550 }}>{item.desc}</td>
-                          <td style={{ padding: '10px 12px' }}>
-                            <span className="badge priority-low" style={{ fontSize: '0.68rem', padding: '2px 6px', background: '#f1f5f9', color: 'var(--text-muted)' }}>
-                              {item.category}
-                            </span>
-                          </td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right' }}>₹{item.cost}</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'center' }}>{item.qty}</td>
-                          <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>₹{item.total}</td>
-                        </tr>
-                      ))}
+                      {invoice.itemizedCharges.map((item) => {
+                        const isRoom = item.id === 'room-stay';
+                        const isPaid = isRoom || item.status === 'paid' || item.status === undefined;
+                        return (
+                          <tr key={item.id}>
+                            <td style={{ padding: '10px 12px', fontWeight: 550 }}>
+                              {item.desc}
+                              {item.prescribedBy && (
+                                <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                                  Prescribed by: {item.prescribedBy.startsWith('doc-') ? (item.prescribedBy) : item.prescribedBy}
+                                </span>
+                              )}
+                            </td>
+                            <td style={{ padding: '10px 12px' }}>
+                              <span className="badge priority-low" style={{ fontSize: '0.68rem', padding: '2px 6px', background: '#f1f5f9', color: 'var(--text-muted)' }}>
+                                {item.category}
+                              </span>
+                            </td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>₹{item.cost}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'center' }}>{item.qty}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>₹{item.total}</td>
+                            <td style={{ padding: '10px 12px', textAlign: 'right' }}>
+                              {isPaid ? (
+                                <span className="badge status-vacant" style={{ fontSize: '0.72rem', padding: '2px 6px' }}>
+                                  Paid
+                                </span>
+                              ) : (
+                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px', alignItems: 'center' }}>
+                                  <span className="badge status-maintenance" style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#ffedd5', color: '#ea580c' }}>
+                                    Pending
+                                  </span>
+                                  {onSettleCharge && (
+                                    <button
+                                      onClick={() => onSettleCharge(selectedPatient.id, item.id)}
+                                      className="btn-primary"
+                                      style={{ padding: '2px 8px', fontSize: '0.72rem', width: 'auto', background: 'linear-gradient(135deg, var(--color-success) 0%, #059669 100%)', boxShadow: 'none' }}
+                                    >
+                                      Settle
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

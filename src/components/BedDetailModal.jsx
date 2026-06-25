@@ -14,7 +14,8 @@ export default function BedDetailModal({
   onToggleMedication,
   onAddMedication,
   beds, 
-  wards 
+  wards,
+  doctors = []
 }) {
   if (!bed) return null;
 
@@ -69,14 +70,14 @@ export default function BedDetailModal({
     setAge('');
     setGender('Male');
     setAilment('');
-    setDoctor('');
+    setDoctor(doctors && doctors.length > 0 ? doctors[0].name : '');
     setPriority('medium');
     setIsEditingVitals(false);
     setIsTransferring(false);
     setNewLogNote('');
     setNewMedName('');
     setActiveTab('vitals');
-  }, [bed]);
+  }, [bed, doctors]);
 
   // Reset transfer bed selection when ward changes
   useEffect(() => {
@@ -332,15 +333,17 @@ export default function BedDetailModal({
 
               <div className="form-group">
                 <label>Assigned Physician</label>
-                <input
-                  type="text"
+                <select
                   required
-                  className="form-input"
-                  style={{ paddingLeft: '14px' }}
-                  placeholder="Dr. Sarah Jenkins"
+                  className="select-filter"
+                  style={{ width: '100%', padding: '12px' }}
                   value={doctor}
                   onChange={(e) => setDoctor(e.target.value)}
-                />
+                >
+                  {doctors.map(doc => (
+                    <option key={doc.id} value={doc.name}>{doc.name} ({doc.specialization})</option>
+                  ))}
+                </select>
               </div>
 
               <div className="modal-actions-bar" style={{ padding: '10px 0 0 0', borderTop: 'none' }}>

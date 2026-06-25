@@ -450,6 +450,25 @@ export const useHMISData = () => {
     ];
   });
 
+  const [doctors, setDoctors] = useState(() => {
+    const saved = localStorage.getItem('hmis_doctors');
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: 'doc-jenkins', name: 'Dr. Sarah Jenkins', specialization: 'Intensive Care' },
+      { id: 'doc-strange', name: 'Dr. Stephen Strange', specialization: 'Neurology' },
+      { id: 'doc-penny', name: 'Dr. Alfred Penny', specialization: 'General Medicine' },
+      { id: 'doc-octavius', name: 'Dr. Otto Octavius', specialization: 'Orthopedics' },
+      { id: 'doc-tennant', name: 'Dr. David Tennant', specialization: 'Cardiology' },
+      { id: 'doc-cho', name: 'Dr. Helen Cho', specialization: 'Pediatrics' },
+      { id: 'doc-carter', name: 'Dr. Peggy Carter', specialization: 'Emergency Room' }
+    ];
+  });
+
+  const [doctorAlerts, setDoctorAlerts] = useState(() => {
+    const saved = localStorage.getItem('hmis_doctor_alerts');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   useEffect(() => {
     localStorage.setItem('hmis_beds', JSON.stringify(beds));
   }, [beds]);
@@ -469,6 +488,14 @@ export const useHMISData = () => {
   useEffect(() => {
     localStorage.setItem('hmis_alarms', JSON.stringify(alarms));
   }, [alarms]);
+
+  useEffect(() => {
+    localStorage.setItem('hmis_doctors', JSON.stringify(doctors));
+  }, [doctors]);
+
+  useEffect(() => {
+    localStorage.setItem('hmis_doctor_alerts', JSON.stringify(doctorAlerts));
+  }, [doctorAlerts]);
 
   const addActivity = (text, type = 'info') => {
     const newActivity = {
@@ -932,6 +959,97 @@ export const useHMISData = () => {
     addActivity(`🚨 PAGER ALERT dispatched to Chief Staff (${doctorName}) for Ward ${wardId.toUpperCase()}: "${message}"`, 'info');
   };
 
+  const registerDoctor = (name, specialization) => {
+    const id = `doc-${Date.now()}`;
+    const newDoc = { id, name, specialization };
+    setDoctors(prev => [...prev, newDoc]);
+    addActivity(`New doctor registered: ${name} (${specialization})`, 'info');
+  };
+
+  const clearDoctorAlert = (alertId) => {
+    setDoctorAlerts(prev => prev.filter(a => a.id !== alertId));
+  };
+
+  const settleBillingCharge = (patientId, chargeId) => {
+    let foundActive = false;
+    let settledCharge = null;
+    let patientName = '';
+
+    setBeds(prev => {
+      const nextBeds = { ...prev };
+      Object.keys(nextBeds).forEach(key => {
+        const bed = nextBeds[key];
+        if (bed.status === 'occupied' && bed.patient && bed.patient.id === patientId) {
+          patientName = bed.patient.name;
+          const nextCharges = (bed.patient.billing.charges || []).map(chg => {
+            if (chg.id === chargeId) {
+              settledCharge = { ...chg, status: 'paid' };
+              return settledCharge;
+            }
+            return chg;
+          });
+          
+          const chargeTotal = (settledCharge?.cost || 0) * (settledCharge?.qty || 1);
+          nextBeds[key] = {
+            ...bed,
+            patient: {
+              ...bed.patient,
+              billing: {
+                ...bed.patient.billing,
+                amountPaid: bed.patient.billing.amountPaid + chargeTotal,
+                charges: nextCharges
+              }
+            }
+          };
+          foundActive = true;
+        }
+      });
+      return nextBeds;
+    });
+
+    if (!foundActive) {
+      setDischargedPatients(prev => {
+        return prev.map(p => {
+          if (p.id === patientId) {
+            patientName = p.name;
+            const nextCharges = (p.billing.charges || []).map(chg => {
+              if (chg.id === chargeId) {
+                settledCharge = { ...chg, status: 'paid' };
+                return settledCharge;
+              }
+              return chg;
+            });
+            const chargeTotal = (settledCharge?.cost || 0) * (settledCharge?.qty || 1);
+            return {
+              ...p,
+              billing: {
+                ...p.billing,
+                amountPaid: p.billing.amountPaid + chargeTotal,
+                charges: nextCharges
+              }
+            };
+          }
+          return p;
+        });
+      });
+    }
+
+    if (settledCharge) {
+      addActivity(`Charge item "${settledCharge.desc}" for ${patientName} settled/paid`, 'update');
+      if (settledCharge.prescribedBy) {
+        const newAlert = {
+          id: `alert-${Date.now()}`,
+          doctorId: settledCharge.prescribedBy,
+          patientId,
+          patientName,
+          message: `Patient ${patientName} paid for ${settledCharge.desc}. You can now proceed.`,
+          timestamp: new Date().toISOString()
+        };
+        setDoctorAlerts(prev => [newAlert, ...prev]);
+      }
+    }
+  };
+
   // Compute live statistics for the hospital
   const getStatistics = () => {
     const totalBeds = Object.keys(beds).length;
@@ -997,6 +1115,11 @@ export const useHMISData = () => {
     staff,
     dischargedPatients,
     alarms,
+    doctors,
+    doctorAlerts,
+    registerDoctor,
+    clearDoctorAlert,
+    settleBillingCharge,
     admitPatient,
     dischargePatient,
     updateVitals,
